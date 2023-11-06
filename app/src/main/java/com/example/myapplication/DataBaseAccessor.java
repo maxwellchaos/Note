@@ -38,7 +38,6 @@ public class DataBaseAccessor extends SQLiteOpenHelper
         // Добавить пару записей в таблицу
         db.execSQL("INSERT INTO " + TABLE_NOTE + "(" + COLUMN_THEME + ", "+ COLUMN_NOTE+") values('theme 1','note 1')");
         db.execSQL("INSERT INTO " + TABLE_NOTE + "(" + COLUMN_THEME + ", "+ COLUMN_NOTE+") values('theme 2','note 2')");
-        db.execSQL("DELETE FROM "+ TABLE_NOTE +" WHERE "+ COLUMN_ID + "=1");
     }
 
     /**
