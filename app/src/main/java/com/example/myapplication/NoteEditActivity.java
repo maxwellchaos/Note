@@ -18,31 +18,35 @@ public class NoteEditActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_note_edit);
-        ThemeEditText = findViewById(R.id.themeEditText);
-        NoteEditText = findViewById(R.id.noteEditText);
 
         Intent fromMainActivityIntent = getIntent();
 
-        ThemeEditText.setText(fromMainActivityIntent.getExtras().getString(MainActivity.KEY_THEME));
-        NoteEditText.setText(fromMainActivityIntent.getExtras().getString(MainActivity.KEY_NOTE_TEXT));
+        String NoteText = fromMainActivityIntent.getExtras().getString(MainActivity.KEY_NOTE_TEXT);
+        String NoteTheme = fromMainActivityIntent.getExtras().getString(MainActivity.KEY_THEME);
+
+        //создание фрагмента
+        NoteEditFragment fragment = new NoteEditFragment();
+
+        Bundle bundle = new Bundle();
+        bundle.putString(MainActivity.KEY_NOTE_TEXT,NoteText);
+        bundle.putString(MainActivity.KEY_THEME,NoteTheme);
+        fragment.setArguments(bundle);
+
+        getSupportFragmentManager().beginTransaction()
+                .replace(R.id.fragmentContainerView,fragment)
+                .commit();
+
         Position = fromMainActivityIntent.getIntExtra(MainActivity.KEY_POSITION,-1);
-
-        if(Position == -1)
-        {
-            Log.d("Note activity","Invalid position");
-        }
-
 
     }
 
-    public void OnBackButtonClick(View view)
+    public void BackData(String theme,String note)
     {
         Intent returnIntent = new Intent();
-        returnIntent.putExtra(MainActivity.KEY_THEME,ThemeEditText.getText().toString());
-        returnIntent.putExtra(MainActivity.KEY_NOTE_TEXT,NoteEditText.getText().toString());
+        returnIntent.putExtra(MainActivity.KEY_THEME,theme);
+        returnIntent.putExtra(MainActivity.KEY_NOTE_TEXT,note);
         returnIntent.putExtra(MainActivity.KEY_POSITION,Position);
         setResult(RESULT_OK,returnIntent);
         finish();
-
     }
 }
