@@ -1,121 +1,107 @@
 package com.example.myapplication;
 
-import androidx.activity.result.ActivityResult;
-import androidx.activity.result.ActivityResultCallback;
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
-import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
-import android.content.res.Configuration;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.widget.Adapter;
 import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.ListView;
-import android.widget.SimpleCursorAdapter;
+import android.widget.SimpleAdapter;
+import android.Manifest;
+
+import java.util.ArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
     final public static String KEY_THEME = "theme";
     final public static String KEY_NOTE_TEXT = "note";
     final public static String KEY_POSITION = "position";
 
+    private static final int MY_PERMISSIONS_REQUEST_INTERNET = 123; // или любое другое уникальное число
+    private static final String SERVICE_ADDRESS = "http://37.77.105.18/api/Note";
+
     ListView ThemesListView;
 
-    SimpleCursorAdapter noteAdapter;
-    DataBaseAccessor db;
+    ArrayList<Note> notes;
+    ArrayAdapter<String> noteAdapter;
+    ServerAccessor serverAccessor = new ServerAccessor(SERVICE_ADDRESS);
 
-    // создание launcher для получения данных из дочерней активити
-    ActivityResultLauncher<Intent> NotesLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
-            new ActivityResultCallback<ActivityResult>() {
-                @Override
-                public void onActivityResult(ActivityResult result) {
-                    // все ли хорошо при получении данных из дочерней активити?
-                    if(result.getResultCode() == Activity.RESULT_OK)
-                    {
-                        //получить данные
-                        Intent returnedIntent = result.getData();
-                        int id = returnedIntent.getIntExtra(KEY_POSITION,-1);
-                        String theme = returnedIntent.getStringExtra(KEY_THEME);
-                        String note = returnedIntent.getStringExtra(KEY_NOTE_TEXT);
+    private ExecutorService executorService = Executors.newSingleThreadExecutor();
 
-                        //обновить БД и интерфейс
-                        db.updateNote(id,theme,note);
-                        noteAdapter = AdapterUpdate();
-                    }
-                    else
-                    {
-                        Log.d("MainActivity" ,"Invalid note activity result");
-                    }
-                }
-            });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // создать аксессор к бд
-        db = new DataBaseAccessor(this);
-
         setContentView(R.layout.activity_main);
         ThemesListView = findViewById(R.id.ListView);
 
-        noteAdapter = AdapterUpdate();
+        noteAdapter = AdapterUpdate(new ArrayList<Note>());
         Intent NoteIntent = new Intent(this, NoteEditActivity.class);
 
-        // обработка клика по listView
-        ThemesListView.setOnItemClickListener(new AdapterView.OnItemClickListener(){
-            @Override
-            public void onItemClick(AdapterView<?> parent, View v, int position, long id)
-            {
-                //Добыть данные из адаптера
-                String theme = ((Cursor) noteAdapter.getItem(position)).getString(1);
-                String note = ((Cursor) noteAdapter.getItem(position)).getString(2);
-                //отправить данные в дочернюю акливити
-                NoteIntent.putExtra(KEY_THEME, theme);
-                NoteIntent.putExtra(KEY_NOTE_TEXT, note);
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.INTERNET)
+                != PackageManager.PERMISSION_GRANTED) {
+            // Разрешение не предоставлено, запросить его у пользователя
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.INTERNET}, MY_PERMISSIONS_REQUEST_INTERNET);
+        }
 
-                //id - идентификатор записи в БД
-                //без приведения к int перидется и получать long а я не хотел переписывать дочернюю активити
-                NoteIntent.putExtra(KEY_POSITION, (int)id);
-                //запустить дочернюю активити
-                NotesLauncher.launch(NoteIntent);
-            }
-        });
+        //Запуск фоновой задачи
+        ProgressTask progressTask = new ProgressTask();
+        executorService.submit(progressTask);
     }
 
     /**
      * Обновляет listView путем установки нового адаптера
      * @return Адаптер для обновления listView
      */
-    private SimpleCursorAdapter AdapterUpdate() {
-        // получить адаптер из класса
-        SimpleCursorAdapter adapter = db.getCursorAdapter(this,
-                android.R.layout.two_line_list_item, // Разметка одного элемента ListView
-                new int[]{android.R.id.text1,android.R.id.text2}); // текст этого элемента
+    private ArrayAdapter<String> AdapterUpdate(ArrayList<Note> list) {
 
+        ArrayList<String> stringList = serverAccessor.getStringListFromNoteList(list);
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
+                    android.R.layout.simple_list_item_1,
+                    stringList);
         // установить адаптер в listview
         ThemesListView.setAdapter(adapter);
         return adapter;
     }
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        // закрыть БД
-        db.close();
-    }
-
     /**
-     * проверяет это телефон или планшет
-     * @return true если экран большой
+     * класс фоновой задачи
      */
-    public static boolean isTablet(Context context) {
-        return (context.getResources().getConfiguration().screenLayout
-                & Configuration.SCREENLAYOUT_SIZE_MASK)
-                >= Configuration.SCREENLAYOUT_SIZE_LARGE;
+    class ProgressTask implements Runnable {
+        String connectionError = null;
+
+        @Override
+        public void run() {
+            try {
+                // выполнение в фоне
+                notes = serverAccessor.getData();
+
+                // Обновление UI осуществляется в основном потоке
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (connectionError == null) {
+                            noteAdapter = AdapterUpdate(notes);
+                        } else {
+                            //проблемы с интернетом
+                        }
+                    }
+                });
+
+            } catch (Exception ex) {
+                connectionError = ex.getMessage();
+            }
+        }
     }
 }
